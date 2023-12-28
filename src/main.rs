@@ -80,6 +80,7 @@ fn process(request: &str, workspace: &str, templates: &Vec<String>, open_by_vsco
 }
 fn main() {
     dotenv().ok();
+    println!("Server started.");
     let port = env::var("PORT").unwrap_or_else(|_| "27121".to_string());
     let workspace = match env::var("WORKSPACE") {
         Ok(workspace) => workspace,
