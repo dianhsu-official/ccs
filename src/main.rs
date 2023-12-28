@@ -7,7 +7,7 @@ use std::{
     net::{TcpListener, TcpStream},
 };
 mod model;
-fn handle(mut stream: TcpStream, workspace: &str, templates: &Vec<String>) {
+fn handle(mut stream: TcpStream, workspace: &str, templates: &Vec<String>, open_by_vscode: bool) {
     let mut buf = Vec::new();
     stream.read_to_end(&mut buf).unwrap();
     let request = String::from_utf8_lossy(&buf[..]).to_string();
@@ -20,11 +20,11 @@ fn handle(mut stream: TcpStream, workspace: &str, templates: &Vec<String>) {
             println!("Bad request: {}", request);
         }
         Some(pos) => {
-            process(&request[pos..], workspace, &templates);
+            process(&request[pos..], workspace, &templates, open_by_vscode);
         }
     }
 }
-fn process(request: &str, workspace: &str, templates: &Vec<String>) {
+fn process(request: &str, workspace: &str, templates: &Vec<String>, open_by_vscode: bool) {
     // read problem data from request
     let task = match serde_json::from_str::<model::Task>(request) {
         Ok(task) => task,
@@ -37,15 +37,9 @@ fn process(request: &str, workspace: &str, templates: &Vec<String>) {
     // create directory for problem
     let path = Path::new(workspace).join(&task.group).join(&task.name);
     if !path.exists() {
-        fs::create_dir_all(path.clone()).unwrap();
-    }
-
-    // create template files
-    for template in templates {
-        let source_path = Path::new(template);
-        let destination_path = path.join(source_path.file_name().unwrap());
-        if !destination_path.exists() {
-            fs::copy(source_path, destination_path).unwrap();
+        match fs::create_dir_all(path.clone()) {
+            Ok(_) => {},
+            Err(_) => {},
         }
     }
 
@@ -57,6 +51,32 @@ fn process(request: &str, workspace: &str, templates: &Vec<String>) {
         fs::write(input_path, &test.input).unwrap();
         fs::write(output_path, &test.output).unwrap();
     }
+    // create template files
+    for template in templates {
+        let source_path = Path::new(template);
+        let destination_path = path.join(source_path.file_name().unwrap());
+        if !destination_path.exists() {
+            fs::copy(source_path, destination_path.clone()).unwrap();
+        }
+        let destination = destination_path.to_str().unwrap();
+        if open_by_vscode {
+            #[cfg(target_os = "windows")]
+            {
+                let mut command = std::process::Command::new("cmd");
+                command.arg("/C");
+                command.arg("code");
+                command.arg(destination);
+                command.spawn().unwrap();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let mut command = std::process::Command::new("code");
+                command.arg(destination);
+                command.spawn().unwrap();
+            }
+        }
+    }
+    println!("Problem created: {}", path.to_str().unwrap());
 }
 fn main() {
     dotenv().ok();
@@ -80,6 +100,10 @@ fn main() {
             return;
         }
     };
+    let open_by_vscode: bool = match env::var("OPEN_BY_VSCODE") {
+        Ok(open_by_vscode) => open_by_vscode == "true",
+        Err(_) => false,
+    };
     if templates.is_empty() {
         println!("No templates found.");
         return;
@@ -88,7 +112,7 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                handle(stream, &workspace, &templates);
+                handle(stream, &workspace, &templates, open_by_vscode);
             }
             Err(e) => {
                 println!("Unable to connect: {}", e);
