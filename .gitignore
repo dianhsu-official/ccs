@@ -1,0 +1,5 @@
+/target
+templates/
+AtCoder*/
+Codeforces*/
+.env
