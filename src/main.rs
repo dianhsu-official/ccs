@@ -1,12 +1,15 @@
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use std::fs;
 use std::path::Path;
+use tokio::fs;
 mod config;
 mod model;
 mod template;
 use config::SERVER_CONFIG;
+use log;
+use log::LevelFilter;
+use std::io::Write;
 #[macro_use]
 extern crate lazy_static;
 async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
@@ -17,15 +20,15 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
     let path_str = match path.to_str() {
         Some(path_str) => path_str,
         None => {
-            println!("Failed to convert path to string: {:?}", path);
+            log::error!("Failed to convert path to string: {:?}", path);
             return StatusCode::INTERNAL_SERVER_ERROR;
         }
     };
     if !path.exists() {
-        match fs::create_dir_all(path.clone()) {
+        match fs::create_dir_all(path.clone()).await {
             Ok(_) => {}
             Err(_) => {
-                println!("Failed to create directory: {}", path_str);
+                log::error!("Failed to create directory: {}", path_str);
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         }
@@ -36,17 +39,17 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
         let test = &task.tests[idx];
         let input_path = path.join(format!("{:02}.i.txt", idx + 1));
         let output_path = path.join(format!("{:02}.o.txt", idx + 1));
-        match fs::write(input_path, &test.input) {
+        match fs::write(input_path, &test.input).await {
             Ok(_) => {}
             Err(err) => {
-                println!("Failed to write input file: {}", err);
+                log::error!("Failed to write input file: {}", err);
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         }
-        match fs::write(output_path, &test.output) {
+        match fs::write(output_path, &test.output).await {
             Ok(_) => {}
             Err(err) => {
-                println!("Failed to write output file: {}", err);
+                log::error!("Failed to write output file: {}", err);
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         }
@@ -57,7 +60,7 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
         let src_filename = match source_path.file_name() {
             Some(filename) => filename,
             None => {
-                println!("Failed to get file name: {:?}", source_path);
+                log::error!("Failed to get file name: {:?}", source_path);
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         };
@@ -66,7 +69,7 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
         let destination = match destination_path.to_str() {
             Some(destination) => destination,
             None => {
-                println!("Failed to convert path to string: {:?}", destination_path);
+                log::error!("Failed to convert path to string: {:?}", destination_path);
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         };
@@ -80,30 +83,51 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
                 match command.spawn() {
                     Ok(_) => {}
                     Err(_) => {
-                        println!("Failed to open file by vscode: {}", destination);
+                        log::error!("Failed to open file by vscode: {}", destination);
                     }
                 }
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(not(target_os = "windows"))]
             {
                 let mut command = std::process::Command::new("code");
                 command.arg(destination);
                 match command.spawn() {
                     Ok(_) => {}
                     Err(_) => {
-                        println!("Failed to open file by vscode: {}", destination);
+                        log::error!("Failed to open file by vscode: {}", destination);
                     }
                 }
             }
         }
     }
-    println!("Problem created: {}", path_str);
+    log::info!("Problem created: {}", path_str);
     return StatusCode::OK;
 }
 #[tokio::main]
 async fn main() {
-    println!("Server started.");
-    tracing_subscriber::fmt::init();
+    env_logger::builder()
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "[{} {}:{}] [{}] - {}",
+                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                record.file().unwrap_or("unknown"),
+                record.line().unwrap_or(0),
+                record.level(),
+                record.args()
+            )
+        })
+        .filter(
+            Some("ccs"),
+            if SERVER_CONFIG.verbose {
+                LevelFilter::Debug
+            } else {
+                LevelFilter::Info
+            },
+        )
+        .write_style(env_logger::WriteStyle::Auto)
+        .init();
+    log::info!("Server started.");
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/", post(main_post));
@@ -111,16 +135,16 @@ async fn main() {
         match tokio::net::TcpListener::bind(format!("127.0.0.1:{}", SERVER_CONFIG.port)).await {
             Ok(listener) => listener,
             Err(err) => {
-                println!("Failed to bind port: {}", err);
+                log::error!("Failed to bind port: {}", err);
                 return;
             }
         };
     match axum::serve(listener, app).await {
         Ok(_) => {
-            println!("Server stopped.");
+            log::info!("Server stopped.");
         }
-        Err(_) => {
-            println!("Server stopped.");
+        Err(err) => {
+            log::error!("Failed to serve: {}", err);
         }
     }
 }
