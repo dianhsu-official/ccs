@@ -3,11 +3,14 @@
 {
 	"name": "Rust",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "rust",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"rust-lang.rust-analyzer"
+				"rust-lang.rust-analyzer",
+				"vadimcn.vscode-lldb"
 			]
 		}
 	}
