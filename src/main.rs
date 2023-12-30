@@ -69,7 +69,9 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
         })
         .collect();
     for template in templates {
-        let source_path = Path::new(&template);
+        // handle template with line number and column number: src/main.rs:<line>:<column>
+        let template_file = template.split(":").into_iter().collect::<Vec<&str>>();
+        let source_path = Path::new(&template_file[0]);
         let src_filename = match source_path.file_name() {
             Some(filename) => filename,
             None => {
@@ -77,8 +79,8 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         };
-        let destination_path = path.join(src_filename);
-        template::handle(source_path, destination_path.clone());
+        let destination_pathbuf = path.join(src_filename);
+        let destination_path = destination_pathbuf.as_path();
         let destination = match destination_path.to_str() {
             Some(destination) => destination,
             None => {
@@ -86,28 +88,36 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         };
+        template::handle(source_path, destination_path);
         if SERVER_CONFIG.open_by_vscode {
+            let mut open_path = destination.to_string();
+            for idx in 1..template_file.len() {
+                open_path.push_str(&format!(":{}", template_file[idx]));
+            }
+            log::info!("Opening file by vscode: {}", open_path);
             #[cfg(target_os = "windows")]
             {
-                let mut command = std::process::Command::new("cmd");
-                command.arg("/C");
+                let mut command = std::process::Command::new("powershell");
+                command.arg("-c");
                 command.arg("code");
-                command.arg(destination);
+                command.arg("-g");
+                command.arg(format!("\"{}\"", open_path));
                 match command.spawn() {
                     Ok(_) => {}
                     Err(_) => {
-                        log::error!("Failed to open file by vscode: {}", destination);
+                        log::error!("Failed to open file by vscode: {}", open_path);
                     }
                 }
             }
             #[cfg(not(target_os = "windows"))]
             {
                 let mut command = std::process::Command::new("code");
-                command.arg(destination);
+                command.arg("-g");
+                command.arg(format!("\"{}\"", open_path));
                 match command.spawn() {
                     Ok(_) => {}
                     Err(_) => {
-                        log::error!("Failed to open file by vscode: {}", destination);
+                        log::error!("Failed to open file by vscode: {}", open_path);
                     }
                 }
             }
