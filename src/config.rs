@@ -3,12 +3,12 @@ use clap::Parser;
 #[command(author, version, about)]
 pub struct ServerConfig {
     /// store the workspace path
-    #[arg(short, long, default_value = "")]
+    #[arg(short, long, default_value = ".")]
     pub workspace: String,
 
     /// templates: src/main.rs, src/model.rs, src/template.rs
     #[arg(short, long, default_value = "")]
-    pub templates: Vec<String>,
+    pub templates: String,
 
     /// allow open by vscode
     #[arg(short, long, default_value_t = false)]
@@ -21,6 +21,10 @@ pub struct ServerConfig {
     /// verbose mode
     #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
+
+    /// log to file
+    #[arg(short, long, default_value = "stderr")]
+    pub log_file: String,
 }
 lazy_static! {
     pub static ref SERVER_CONFIG: ServerConfig = ServerConfig::parse();

@@ -209,7 +209,7 @@ dependencies = [
 
 [[package]]
 name = "ccs"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "axum",
  "chrono",

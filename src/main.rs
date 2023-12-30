@@ -1,6 +1,7 @@
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use std::fs::File;
 use std::path::Path;
 use tokio::fs;
 mod config;
@@ -55,7 +56,19 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
         }
     }
     // create template files
-    for template in &SERVER_CONFIG.templates {
+    let templates: Vec<&str> = SERVER_CONFIG
+        .templates
+        .split(',')
+        .into_iter()
+        .filter_map(|x| {
+            if x.trim().is_empty() {
+                None
+            } else {
+                Some(x.trim())
+            }
+        })
+        .collect();
+    for template in templates {
         let source_path = Path::new(&template);
         let src_filename = match source_path.file_name() {
             Some(filename) => filename,
@@ -105,7 +118,9 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
 }
 #[tokio::main]
 async fn main() {
-    env_logger::builder()
+    // setup logs
+    let mut builder = env_logger::builder();
+    builder
         .format(|buf, record| {
             writeln!(
                 buf,
@@ -122,14 +137,26 @@ async fn main() {
             if SERVER_CONFIG.verbose {
                 LevelFilter::Debug
             } else {
-                LevelFilter::Info
+                LevelFilter::Warn
             },
         )
-        .write_style(env_logger::WriteStyle::Auto)
-        .init();
+        .write_style(env_logger::WriteStyle::Auto);
+    match SERVER_CONFIG.log_file.as_str() {
+        "stderr" => {}
+        "stdout" => {
+            builder.target(env_logger::Target::Stdout);
+        }
+        file => {
+            let target = Box::new(File::create(file).expect("Failed to create log file."));
+            builder.target(env_logger::Target::Pipe(target));
+        }
+    }
+    builder.init();
+
+    // start server
     log::info!("Server started.");
     let app = Router::new()
-        .route("/", get(|| async { "Hello, World!" }))
+        .route("/", get(|| async { "Hello, CCS!" }))
         .route("/", post(main_post));
     let listener =
         match tokio::net::TcpListener::bind(format!("127.0.0.1:{}", SERVER_CONFIG.port)).await {
