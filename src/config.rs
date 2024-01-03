@@ -25,6 +25,10 @@ pub struct ServerConfig {
     /// log to file
     #[arg(short, long, default_value = "stderr")]
     pub log_file: String,
+
+    /// store with short path
+    #[arg(short, long, default_value_t = false)]
+    pub short_path: bool,
 }
 lazy_static! {
     pub static ref SERVER_CONFIG: ServerConfig = ServerConfig::parse();

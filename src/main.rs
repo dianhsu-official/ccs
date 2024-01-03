@@ -13,23 +13,74 @@ use log::LevelFilter;
 use std::io::Write;
 #[macro_use]
 extern crate lazy_static;
-async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
-    // create directory for problem
-    let path = Path::new(&SERVER_CONFIG.workspace)
-        .join(&task.group)
-        .join(&task.name);
+
+async fn get_path(task: &model::Task) -> Result<String, String> {
+    let mut groups: Vec<String> = Vec::new();
+    log::info!("Problem group: {}", task.group);
+    log::info!("Problem name: {}", task.name);
+    if SERVER_CONFIG.short_path {
+        if task.group.starts_with("Codeforces - ") {
+            groups.push("Codeforces".to_string());
+            let mut contest = task.group.clone();
+            contest = contest.replace(':', "");
+            groups.push(contest.split_off(13));
+            let problem = match task.name.split('.').nth(0) {
+                Some(problem) => problem.to_string(),
+                None => {
+                    return Err("Failed to get problem name.".to_string());
+                }
+            };
+            groups.push(problem);
+        } else if task.group.starts_with("AtCoder - ") {
+            groups.push("AtCoder".to_string());
+            let mut contest = task.group.clone();
+            groups.push(contest.split_off(10));
+            let problem = match task.name.split('-').nth(0) {
+                Some(problem) => problem.trim().to_string(),
+                None => {
+                    return Err("Failed to get problem name.".to_string());
+                }
+            };
+            groups.push(problem);
+        }
+    }
+    if groups.is_empty() {
+        let mut contest = task.group.clone();
+        contest = contest.replace(':', "");
+        groups.push(contest);
+        let problem = task.name.clone();
+        groups.push(problem);
+    }
+    log::info!("Problem groups: {:?}", groups);
+    let mut path = Path::new(&SERVER_CONFIG.workspace).to_path_buf();
+    for group in groups {
+        path = path.join(group);
+    }
     let path_str = match path.to_str() {
         Some(path_str) => path_str,
         None => {
-            log::error!("Failed to convert path to string: {:?}", path);
+            return Err("Failed to convert path to string.".to_string());
+        }
+    };
+    log::info!("Problem path: {}", path_str);
+    return Ok(path_str.to_string());
+}
+
+async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
+    log::info!("Problem received: {}", task.name);
+    let path_str = match get_path(&task).await {
+        Ok(path_str) => path_str,
+        Err(info) => {
+            log::error!("{}", info);
             return StatusCode::INTERNAL_SERVER_ERROR;
         }
     };
+    let path = Path::new(&path_str);
     if !path.exists() {
-        match fs::create_dir_all(path.clone()).await {
+        match fs::create_dir_all(path).await {
             Ok(_) => {}
-            Err(_) => {
-                log::error!("Failed to create directory: {}", path_str);
+            Err(info) => {
+                log::error!("Failed to create directory: {}, {}", path_str, info);
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         }
