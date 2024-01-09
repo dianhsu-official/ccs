@@ -12,4 +12,4 @@ Need [Competitive Companion](https://github.com/jmerle/competitive-companion)
 | `open_by_vscode` | `true` or `false`                            | Enable open vscode after templates generated.                                   |
 | `verbose`        |                                              | Verbose show logs.                                                              |
 | `log_file`       | `./test.log` or `stderr` or `stdout`         | File path or `stdout` or `stderr`, it's used for log file                       |
-| `short_path`     | `true` or `false`                            | Enable short path directory created                                             |
+| `short_path`     |                                              | Enable short path directory created                                             |
