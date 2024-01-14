@@ -4,7 +4,7 @@ pub(crate) fn handle<P: AsRef<Path> + Copy, Q: AsRef<Path> + Copy>(from: P, to: 
     if !to.as_ref().exists() {
         match std::fs::copy(from, to) {
             Ok(_) => {
-                log::info!(
+                log::debug!(
                     "Copy template file from {} to {}.",
                     from.as_ref().display(),
                     to.as_ref().display()
@@ -20,7 +20,7 @@ pub(crate) fn handle<P: AsRef<Path> + Copy, Q: AsRef<Path> + Copy>(from: P, to: 
             }
         }
     } else {
-        log::info!(
+        log::debug!(
             "{} already exists, skip copy template file.",
             to.as_ref().display()
         );

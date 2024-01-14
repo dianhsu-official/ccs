@@ -3,7 +3,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use std::fs::File;
 use std::path::Path;
-use tokio::fs;
+use tokio::{fs, signal};
 mod config;
 mod model;
 mod template;
@@ -44,7 +44,7 @@ async fn get_path(task: &model::Task) -> Result<String, String> {
         let problem = task.name.clone();
         groups.push(problem);
     }
-    log::info!("Problem groups: {:?}", groups);
+    log::debug!("Problem groups: {:?}", groups);
     let mut path = Path::new(&SERVER_CONFIG.workspace).to_path_buf();
     for group in groups {
         path = path.join(group);
@@ -55,12 +55,12 @@ async fn get_path(task: &model::Task) -> Result<String, String> {
             return Err("Failed to convert path to string.".to_string());
         }
     };
-    log::info!("Problem path: {}", path_str);
+    log::debug!("Problem path: {}", path_str);
     return Ok(path_str.to_string());
 }
 
 async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
-    log::info!("Problem received: {:?}", task);
+    log::debug!("Problem received: {:?}", task);
     let path_str = match get_path(&task).await {
         Ok(path_str) => path_str,
         Err(info) => {
@@ -138,7 +138,7 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
             for idx in 1..template_file.len() {
                 open_path.push_str(&format!(":{}", template_file[idx]));
             }
-            log::info!("Opening file by vscode: {}", open_path);
+            log::debug!("Opening file by vscode: {}", open_path);
             #[cfg(target_os = "windows")]
             {
                 let mut command = std::process::Command::new("powershell");
@@ -167,7 +167,7 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
             }
         }
     }
-    log::info!("Problem created: {}", path_str);
+    log::debug!("Problem created: {}", path_str);
     return StatusCode::OK;
 }
 #[tokio::main]
@@ -191,7 +191,7 @@ async fn main() {
             if SERVER_CONFIG.verbose {
                 LevelFilter::Debug
             } else {
-                LevelFilter::Warn
+                LevelFilter::Info
             },
         )
         .write_style(env_logger::WriteStyle::Auto);
@@ -220,12 +220,39 @@ async fn main() {
                 return;
             }
         };
-    match axum::serve(listener, app).await {
+    match axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+    {
         Ok(_) => {
             log::info!("Server stopped.");
         }
-        Err(err) => {
-            log::error!("Failed to serve: {}", err);
+        Err(_) => {
+            log::error!("Server stopped with error.");
         }
+    }
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {
+        },
+        _ = terminate => {},
     }
 }
