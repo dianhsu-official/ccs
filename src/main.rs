@@ -16,32 +16,25 @@ extern crate lazy_static;
 
 async fn get_path(task: &model::Task) -> Result<String, String> {
     let mut groups: Vec<String> = Vec::new();
-    log::info!("Problem group: {}", task.group);
-    log::info!("Problem name: {}", task.name);
     if SERVER_CONFIG.short_path {
-        if task.group.starts_with("Codeforces - ") {
+        if task.group.starts_with("Codeforces") {
+            // match problem url: https://<any domain>/contest/1461/problem/A
+            let urls = task.url.split('/').into_iter().collect::<Vec<&str>>();
+            let problem = urls[urls.len() - 1].to_string();
+            let contest = urls[urls.len() - 3].to_string();
             groups.push("Codeforces".to_string());
-            let mut contest = task.group.clone();
-            contest = contest.replace(':', "");
-            groups.push(contest.split_off(13));
-            let problem = match task.name.split('.').nth(0) {
-                Some(problem) => problem.to_string(),
-                None => {
-                    return Err("Failed to get problem name.".to_string());
-                }
-            };
+            groups.push(contest);
             groups.push(problem);
-        } else if task.group.starts_with("AtCoder - ") {
-            groups.push("AtCoder".to_string());
-            let mut contest = task.group.clone();
-            groups.push(contest.split_off(10));
-            let problem = match task.name.split('-').nth(0) {
-                Some(problem) => problem.trim().to_string(),
-                None => {
-                    return Err("Failed to get problem name.".to_string());
-                }
-            };
-            groups.push(problem);
+        } else if task.group.starts_with("AtCoder") {
+            // match problem url: https://atcoder.jp/contests/abc335/tasks/abc335_a
+            if let Some(contest_problem) = task.url.split('/').into_iter().last() {
+                groups.push("AtCoder".to_string());
+                let contest_problem = contest_problem.to_string();
+                let contest = contest_problem.split('_').nth(0).unwrap().to_string();
+                let problem = contest_problem.split('_').nth(1).unwrap().to_string();
+                groups.push(contest);
+                groups.push(problem);
+            }
         }
     }
     if groups.is_empty() {
@@ -67,7 +60,7 @@ async fn get_path(task: &model::Task) -> Result<String, String> {
 }
 
 async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
-    log::info!("Problem received: {}", task.name);
+    log::info!("Problem received: {:?}", task);
     let path_str = match get_path(&task).await {
         Ok(path_str) => path_str,
         Err(info) => {
