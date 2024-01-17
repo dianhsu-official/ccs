@@ -13,7 +13,7 @@ use log::LevelFilter;
 use std::io::Write;
 #[macro_use]
 extern crate lazy_static;
-
+const ILLEGAL_CHARS: [char; 10] = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\0'];
 async fn get_path(task: &model::Task) -> Result<String, String> {
     let mut groups: Vec<String> = Vec::new();
     if SERVER_CONFIG.short_path {
@@ -39,7 +39,9 @@ async fn get_path(task: &model::Task) -> Result<String, String> {
     }
     if groups.is_empty() {
         let mut contest = task.group.clone();
-        contest = contest.replace(':', "");
+        for illegal_char in ILLEGAL_CHARS.iter() {
+            contest = contest.replace(*illegal_char, "_");
+        }
         groups.push(contest);
         let problem = task.name.clone();
         groups.push(problem);
