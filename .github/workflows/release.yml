@@ -95,7 +95,7 @@ jobs:
       run: powershell Compress-Archive -Path ${{ matrix.output }} -DestinationPath ${{ matrix.dist }}
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@main
+      uses: actions/upload-artifact@v3
       with: 
         name: my-artifact
         path: ${{ matrix.dist }}
@@ -112,7 +112,7 @@ jobs:
     - name: Show tags
       run: git tag -l
     - name: Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@main
       with:
         name: my-artifact
         path: artifacts
