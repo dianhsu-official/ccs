@@ -112,7 +112,7 @@ jobs:
     - name: Show tags
       run: git tag -l
     - name: Download artifacts
-      uses: actions/download-artifact@main
+      uses: actions/download-artifact@v3
       with:
         name: my-artifact
         path: artifacts
