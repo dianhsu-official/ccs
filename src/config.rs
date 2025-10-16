@@ -19,7 +19,7 @@ pub struct ServerConfig {
     pub port: i32,
 
     /// verbose mode
-    #[arg(short, long, default_value_t = false)]
+    #[arg(short, long, default_value_t = true)]
     pub verbose: bool,
 
     /// log to file

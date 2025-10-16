@@ -43,8 +43,13 @@ async fn get_path(task: &model::Task) -> Result<String, String> {
             contest = contest.replace(*illegal_char, "_");
         }
         groups.push(contest);
-        let problem = task.name.clone();
+        let mut problem = task.name.clone();
+        for illegal_char in ILLEGAL_CHARS.iter() {
+            problem = problem.replace(*illegal_char, "_");
+        }
         groups.push(problem);
+    } else {
+        log::debug!("Short path enabled, using short path.");
     }
     log::debug!("Problem groups: {:?}", groups);
     let mut path = Path::new(&SERVER_CONFIG.workspace).to_path_buf();
@@ -63,22 +68,12 @@ async fn get_path(task: &model::Task) -> Result<String, String> {
 
 async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
     log::debug!("Problem received: {:?}", task);
-    let path_str = match get_path(&task).await {
-        Ok(path_str) => path_str,
-        Err(info) => {
-            log::error!("{}", info);
-            return StatusCode::INTERNAL_SERVER_ERROR;
-        }
-    };
+    let path_str = get_path(&task).await.expect("Failed to get path.");
     let path = Path::new(&path_str);
     if !path.exists() {
-        match fs::create_dir_all(path).await {
-            Ok(_) => {}
-            Err(info) => {
-                log::error!("Failed to create directory: {}, {}", path_str, info);
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
-        }
+        fs::create_dir_all(path)
+            .await
+            .expect(&format!("Failed to create directory: {}", path_str));
     }
 
     // create problem data
@@ -86,20 +81,19 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
         let test = &task.tests[idx];
         let input_path = path.join(format!("{:02}.i.txt", idx + 1));
         let output_path = path.join(format!("{:02}.o.txt", idx + 1));
-        match fs::write(input_path, &test.input).await {
-            Ok(_) => {}
-            Err(err) => {
-                log::error!("Failed to write input file: {}", err);
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
-        }
-        match fs::write(output_path, &test.output).await {
-            Ok(_) => {}
-            Err(err) => {
-                log::error!("Failed to write output file: {}", err);
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
-        }
+        fs::write(input_path.clone(), &test.input)
+            .await
+            .expect(&format!(
+                "Failed to write input file: {}",
+                input_path.display()
+            ));
+
+        fs::write(output_path.clone(), &test.output)
+            .await
+            .expect(&format!(
+                "Failed to write output file: {}",
+                output_path.display()
+            ));
     }
     // create template files
     let templates: Vec<&str> = SERVER_CONFIG
@@ -118,22 +112,17 @@ async fn main_post(Json(task): Json<model::Task>) -> StatusCode {
         // handle template with line number and column number: src/main.rs:<line>:<column>
         let template_file = template.split(":").into_iter().collect::<Vec<&str>>();
         let source_path = Path::new(&template_file[0]);
-        let src_filename = match source_path.file_name() {
-            Some(filename) => filename,
-            None => {
-                log::error!("Failed to get file name: {:?}", source_path);
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
-        };
+        let src_filename = source_path.to_str().expect(&format!(
+            "Failed to convert source path to string: {:?}",
+            source_path
+        ));
         let destination_pathbuf = path.join(src_filename);
         let destination_path = destination_pathbuf.as_path();
-        let destination = match destination_path.to_str() {
-            Some(destination) => destination,
-            None => {
-                log::error!("Failed to convert path to string: {:?}", destination_path);
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
-        };
+
+        let destination = destination_path.to_str().expect(&format!(
+            "Failed to convert destination path to string: {:?}",
+            destination_path
+        ));
         template::handle(source_path, destination_path);
         if SERVER_CONFIG.open_by_vscode {
             let mut open_path = destination.to_string();
